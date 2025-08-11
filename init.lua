@@ -102,7 +102,7 @@ vim.g.have_nerd_font = true
 vim.opt.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.opt.relativenumber = true
+vim.opt.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.opt.mouse = 'a'
@@ -157,13 +157,54 @@ vim.opt.cursorline = true
 -- Minimal number of screen lines to keep above and below the cursor.
 vim.opt.scrolloff = 10
 
+-- JH Adding
+vim.opt.tabstop = 2
+vim.opt.shiftwidth = 2
+vim.opt.expandtab = true
+
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
 
--- Clear highlights on search when pressing <Esc> in normal mode
---  See `:help hlsearch`
-vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
+local escape_count = 0
+local timer = vim.loop.new_timer()
 
+local function reset_escape_count()
+  escape_count = 0
+end
+
+local function handle_escape()
+  escape_count = escape_count + 1
+
+  if escape_count >= 3 then
+    -- Flash the screen red
+    local original_bg = vim.api.nvim_get_hl(0, { name = 'Normal' }).bg
+    vim.cmd 'highlight Normal guibg=#FF0000'
+    vim.defer_fn(function()
+      if original_bg then
+        vim.cmd(string.format('highlight Normal guibg=#%06x', original_bg))
+      else
+        vim.cmd 'highlight Normal guibg=NONE'
+      end
+    end, 100) -- Reset after 100ms
+
+    -- Reset the count
+    reset_escape_count()
+  else
+    -- Reset the count after 1 second of inactivity
+    timer:start(1000, 0, vim.schedule_wrap(reset_escape_count))
+  end
+end
+
+-- Map the Escape key to call the function
+vim.keymap.set('n', '<Esc>', function()
+  handle_escape()
+  vim.cmd 'nohlsearch' -- Clear search highlights
+end, { noremap = true, silent = true })
+
+vim.keymap.set('i', '<Esc>', function()
+  handle_escape()
+  return '<Esc>'
+end, { noremap = true, silent = true, expr = true })
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 
@@ -219,6 +260,22 @@ vim.keymap.set('n', '<leader>st', function()
   vim.cmd.wincmd 'J'
   vim.api.nvim_win_set_height(0, 15)
 end, { desc = 'Open [S]mall [T]erminal' })
+
+vim.keymap.set('n', '-', '<cmd>Oil<CR>')
+
+-- JH Added quickfix keymaps
+vim.keymap.set('n', ']c', ':cnext<CR>', { desc = 'Move to next item in quickfix', silent = true })
+vim.keymap.set('n', '[c', ':cprev<CR>', { desc = 'Move to previous item in quickfix', silent = true })
+
+-- Theprimeagen greatest keymap ever
+vim.keymap.set('x', '<leader>p', '"_dP')
+
+vim.keymap.set('n', '<leader>j', '<cmd>w<CR>', { desc = 'Save current file [j]ack' })
+vim.keymap.set('n', '<leader>J', '<cmd>wa<CR>', { desc = 'Save all buffers [J]onk' })
+vim.keymap.set('n', ';', ':', { noremap = true })
+vim.keymap.set('n', ':', function()
+  vim.cmd 'echo "Don\'t use Shift for :! Use ; instead."'
+end, { noremap = true, silent = true })
 
 -- [[ Install `lazy.nvim` plugin manager ]]
 --    See `:help lazy.nvim.txt` or https://github.com/folke/lazy.nvim for more info
@@ -406,8 +463,15 @@ require('lazy').setup({
           ['ui-select'] = {
             require('telescope.themes').get_dropdown(),
           },
+          fzf = {},
         },
       }
+
+      require('telescope').setup { defaults = {
+        file_ignore_patterns = {
+          'node_modules',
+        },
+      } }
 
       -- Enable Telescope extensions if they are installed
       pcall(require('telescope').load_extension, 'fzf')
@@ -599,6 +663,7 @@ require('lazy').setup({
           -- code, if the language server you are using supports them
           --
           -- This may be unwanted, since they displace some of your code
+
           if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
             map('<leader>th', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
@@ -693,7 +758,6 @@ require('lazy').setup({
       }
     end,
   },
-
   { -- Autoformat
     'stevearc/conform.nvim',
     event = { 'BufWritePre' },
@@ -736,7 +800,43 @@ require('lazy').setup({
       },
     },
   },
-
+  {
+    'stevearc/conform.nvim',
+    event = { 'BufWritePre' },
+    cmd = { 'ConformInfo' },
+    keys = {
+      {
+        -- Optional: if you want a keybind for format
+        '<leader>f',
+        function()
+          require('conform').format()
+        end,
+        mode = { 'n', 'v' },
+        desc = 'Format code',
+      },
+    },
+    opts = {
+      formatters_by_ft = {
+        javascript = { 'prettier' },
+        typescript = { 'prettier' },
+        javascriptreact = { 'prettier' },
+        typescriptreact = { 'prettier' },
+        css = { 'prettier' },
+        html = { 'prettier' },
+        json = { 'prettier' },
+        yaml = { 'prettier' },
+        markdown = { 'prettier' },
+      },
+      format_on_save = {
+        timeout_ms = 500,
+        lsp_fallback = true,
+      },
+    },
+    init = function()
+      -- If you want the formatexpr, here is the place to set it
+      vim.o.formatexpr = "v:lua.require'conform'.formatexpr()"
+    end,
+  },
   { -- Autocompletion
     'hrsh7th/nvim-cmp',
     event = 'InsertEnter',
@@ -874,6 +974,18 @@ require('lazy').setup({
   -- Highlight todo, notes, etc in comments
   { 'folke/todo-comments.nvim', event = 'VimEnter', dependencies = { 'nvim-lua/plenary.nvim' }, opts = { signs = false } },
 
+  {
+    'stevearc/oil.nvim',
+    ---@module 'oil'
+    ---@type oil.SetupOpts
+    opts = {},
+    -- Optional dependencies
+    dependencies = { { 'echasnovski/mini.icons', opts = {} } },
+    -- dependencies = { "nvim-tree/nvim-web-devicons" }, -- use if you prefer nvim-web-devicons
+    -- Lazy loading is not recommended because it is very tricky to make it work correctly in all situations.
+    lazy = false,
+  },
+
   { -- Collection of various small independent plugins/modules
     'echasnovski/mini.nvim',
     config = function()
@@ -957,33 +1069,13 @@ require('lazy').setup({
   --    This is the easiest way to modularize your config.
   --
   --  Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
   --
   -- For additional information with loading, sourcing and examples see `:help lazy.nvim-🔌-plugin-spec`
   -- Or use telescope!
   -- In normal mode type `<space>sh` then write `lazy.nvim-plugin`
   -- you can continue same window with `<space>sr` which resumes last telescope search
-}, {
-  ui = {
-    -- If you are using a Nerd Font: set icons to an empty table which will use the
-    -- default lazy.nvim defined Nerd Font icons, otherwise define a unicode icons table
-    icons = vim.g.have_nerd_font and {} or {
-      cmd = '⌘',
-      config = '🛠',
-      event = '📅',
-      ft = '📂',
-      init = '⚙',
-      keys = '🗝',
-      plugin = '🔌',
-      runtime = '💻',
-      require = '🌙',
-      source = '📄',
-      start = '🚀',
-      task = '📌',
-      lazy = '💤 ',
-    },
-  },
-})
+}, {})
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
