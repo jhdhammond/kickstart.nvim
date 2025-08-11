@@ -1023,14 +1023,6 @@ require('lazy').setup({
       --  Check out: https://github.com/echasnovski/mini.nvim
     end,
   },
-  {
-    'nvimdev/dashboard-nvim',
-    event = 'VimEnter', -- Load when Neovim starts
-    config = function()
-      require('dashboard').setup {}
-    end,
-    dependencies = { { 'nvim-tree/nvim-web-devicons' } }, -- Optional, for icons
-  },
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
