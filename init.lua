@@ -712,6 +712,21 @@ require('lazy').setup({
         -- ts_ls = {},
         --
 
+        tailwindcss = {
+          filetypes = { 'html', 'css', 'scss', 'javascript', 'javascriptreact', 'typescript', 'typescriptreact', 'vue' },
+          settings = {
+            tailwindCSS = {
+              experimental = {
+                classRegex = {
+                  { 'clsx\\(([^)]*)\\)', "(?:'|\"|`)([^']*)(?:'|\"|`)" },
+                  { 'cn\\(([^)]*)\\)', "(?:'|\"|`)([^']*)(?:'|\"|`)" },
+                  { 'cva\\(([^)]*)\\)', '["\'`]([^"\'`]*).*?["\'`]' },
+                },
+              },
+            },
+          },
+        },
+
         lua_ls = {
           -- cmd = { ... },
           -- filetypes = { ... },
@@ -949,6 +964,9 @@ require('lazy').setup({
           { name = 'luasnip' },
           { name = 'path' },
         },
+        formatting = {
+          format = require('cmp-tailwind-colors').format,
+        },
       }
     end,
   },
@@ -984,6 +1002,21 @@ require('lazy').setup({
     -- dependencies = { "nvim-tree/nvim-web-devicons" }, -- use if you prefer nvim-web-devicons
     -- Lazy loading is not recommended because it is very tricky to make it work correctly in all situations.
     lazy = false,
+  },
+
+  {
+    'js-everts/cmp-tailwind-colors',
+    config = function()
+      require('cmp-tailwind-colors').setup {
+        format = function(itemColor)
+          return {
+            fg = itemColor,
+            bg = itemColor,
+            text = ' ',
+          }
+        end,
+      }
+    end,
   },
 
   { -- Collection of various small independent plugins/modules
