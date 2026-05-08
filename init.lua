@@ -749,6 +749,12 @@ require('lazy').setup({
         json = { 'prettier' },
         yaml = { 'prettier' },
         markdown = { 'prettier' },
+        sql = { 'sql_formatter' },
+      },
+      formatters = {
+        sql_formatter = {
+          args = { '--language', 'postgresql' },
+        },
       },
     },
     init = function()
