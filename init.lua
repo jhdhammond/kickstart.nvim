@@ -774,17 +774,121 @@ require('lazy').setup({
       keymap = { preset = 'default' }, -- <C-y> accept, <C-n>/<C-p> nav, <C-b>/<C-f> scroll docs, <C-space> show
       appearance = { nerd_font_variant = 'mono' },
       completion = {
-        documentation = { auto_show = true, auto_show_delay_ms = 200 },
+        documentation = {
+          auto_show = true,
+          auto_show_delay_ms = 200,
+          -- Rounded border (like Telescope). Its color is set dynamically per
+          -- selected item by the BlinkCmpListSelect autocmd in config below, so it
+          -- matches the source bar: green = our codebase, blue = library.
+          window = { border = 'rounded' },
+        },
+        menu = {
+          -- Prepend a colored block to each row: green = from our codebase,
+          -- blue = from a library (node_modules), nothing = plain in-scope symbol.
+          -- (Highlight groups BlinkLocalSource/BlinkLibSource are defined in config below.)
+          draw = {
+            columns = { { 'source_bar' }, { 'kind_icon' }, { 'label', 'label_description', gap = 1 } },
+            components = {
+              source_bar = {
+                text = function(ctx)
+                  local entries = ctx.item.data and ctx.item.data.entryNames
+                  return entries and '█' or ' '
+                end,
+                highlight = function(ctx)
+                  local entries = ctx.item.data and ctx.item.data.entryNames
+                  if not entries then
+                    return
+                  end
+                  for _, entry in ipairs(entries) do
+                    local file = entry.data and entry.data.fileName
+                    if file then
+                      return file:match 'node_modules' and 'BlinkLibSource' or 'BlinkLocalSource'
+                    end
+                  end
+                end,
+              },
+            },
+          },
+        },
       },
       sources = {
         default = { 'lsp', 'path', 'buffer', 'lazydev' },
         providers = {
           lazydev = { name = 'LazyDev', module = 'lazydev.integrations.blink', score_offset = 100 },
+          lsp = {
+            transform_items = function(_, items)
+              -- Soft re-rank of tsserver auto-import completions: nudge imports from
+              -- our own codebase above duplicates coming from libraries. Nothing is
+              -- hidden — library versions are still there if you scroll (e.g.
+              -- ToggleGroup, which exists in our ui/ and in react-data-grid + radix).
+              --
+              -- Note: item.detail/labelDetails are nil here (only filled in on resolve),
+              -- so we key off item.data.entryNames[N].data.fileName, whose path contains
+              -- '/node_modules/' for library imports and not for our own source files.
+              for _, item in ipairs(items) do
+                local entries = item.data and item.data.entryNames
+                if entries then
+                  for _, entry in ipairs(entries) do
+                    local file = entry.data and entry.data.fileName
+                    if file then
+                      if file:match 'node_modules' then
+                        item.score_offset = (item.score_offset or 0) - 100 -- library import
+                      else
+                        item.score_offset = (item.score_offset or 0) + 100 -- our codebase
+                      end
+                    end
+                  end
+                end
+              end
+              return items
+            end,
+          },
         },
       },
       fuzzy = { implementation = 'prefer_rust_with_warning' },
     },
     opts_extend = { 'sources.default' },
+    config = function(_, opts)
+      -- Shared palette (tokyonight-night) for the source bar + doc border.
+      local LOCAL_FG = '#9ece6a' -- green: our codebase
+      local LIB_FG = '#7aa2f7' -- blue: library
+      local NEUTRAL_FG = '#565f89' -- gray: plain in-scope symbol (no auto-import)
+
+      -- Classify a completion item by where its import would come from.
+      -- Returns a color, matching the logic used by the menu's source bar.
+      local function source_color(item)
+        local entries = item and item.data and item.data.entryNames
+        if not entries then
+          return NEUTRAL_FG
+        end
+        for _, entry in ipairs(entries) do
+          local file = entry.data and entry.data.fileName
+          if file then
+            return file:match 'node_modules' and LIB_FG or LOCAL_FG
+          end
+        end
+        return LOCAL_FG
+      end
+
+      -- Source-bar highlight groups, re-applied on ColorScheme so they survive a reload.
+      local function set_source_hl()
+        vim.api.nvim_set_hl(0, 'BlinkLocalSource', { fg = LOCAL_FG })
+        vim.api.nvim_set_hl(0, 'BlinkLibSource', { fg = LIB_FG })
+      end
+      set_source_hl()
+      vim.api.nvim_create_autocmd('ColorScheme', { callback = set_source_hl })
+
+      -- Recolor the documentation window's border to match the selected item's bar.
+      vim.api.nvim_create_autocmd('User', {
+        pattern = 'BlinkCmpListSelect',
+        callback = function(args)
+          local item = args.data and args.data.item
+          vim.api.nvim_set_hl(0, 'BlinkCmpDocBorder', { fg = source_color(item) })
+        end,
+      })
+
+      require('blink.cmp').setup(opts)
+    end,
   },
 
   { -- You can easily change to a different colorscheme.
